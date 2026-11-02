@@ -1,16 +1,10 @@
 import cors from "cors";
 import express from "express";
 
-import { ENV } from "./env.server";
-
 export const app = express();
 
-app.use(
-  cors({
-    origin: ENV.CORS_ORIGIN,
-    methods: ["GET", "OPTIONS"],
-  }),
-);
+// A public read API: any origin may fetch (no cookies, no writes). No env values needed.
+app.use(cors({ methods: ["GET", "OPTIONS"] }));
 
 app.use(express.json());
 
