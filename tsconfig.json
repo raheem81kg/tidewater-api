@@ -1,0 +1,3 @@
+{
+  "extends": "@tidewater-api/config/tsconfig.base.json"
+}
