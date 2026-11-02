@@ -10,8 +10,16 @@ REPO_URL="${1:?Usage: bash setup-vps.sh <repo-git-url>}"
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker "$USER"
 
-# The deploy job `cd`s here and runs `docker compose pull && up -d`.
-git clone "$REPO_URL" ~/tidewater-api
+# The deploy job `cd`s here and runs `docker compose pull && up -d`. It only needs the
+# compose file plus the registry image — a private repo can't be cloned without a deploy
+# key, so clone if we can and copy docker-compose.yml over SSH otherwise.
+if git clone "$REPO_URL" ~/tidewater-api 2>/dev/null; then
+  echo "Repo cloned to ~/tidewater-api"
+else
+  mkdir -p ~/tidewater-api
+  echo "Could not clone (private repo needs a deploy key on GitHub)."
+  echo "Copy just what the deploy needs:  scp docker-compose.yml ${USER}@<this-ip>:~/tidewater-api/"
+fi
 
 # Registry auth is done by the pipeline itself (GHCR_PAT secret); nothing else is needed.
 echo
