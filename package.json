@@ -17,7 +17,8 @@
     "docker:logs": "docker compose logs -f",
     "env:generate": "varlock codegen --path ./apps/server/",
     "postinstall": "varlock codegen --path ./apps/server/",
-    "check": "biome check --write ."
+    "check": "biome check --write .",
+    "test": "pnpm -r test"
   },
   "dependencies": {
     "zod": "catalog:"

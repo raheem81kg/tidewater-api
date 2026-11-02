@@ -2,11 +2,12 @@ name: tidewater-api
 
 services:
   server:
+    # Deployed from the registry (IMAGE_TAG = commit sha, set by the pipeline or by hand);
+    # the build section stays so `pnpm docker:up` still works for local development.
+    image: ghcr.io/${GITHUB_REPOSITORY:-you/tidewater-api}:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: apps/server/Dockerfile
-      secrets:
-        - server_env
     init: true
     ports:
       - "3000:3000"
@@ -19,15 +20,10 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://localhost:3000/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+          "fetch('http://localhost:3000/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
         ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
     restart: unless-stopped
-
-# BuildKit makes these available only while install/build commands run.
-secrets:
-  server_env:
-    file: apps/server/.env
