@@ -1,76 +1,79 @@
 # tidewater-api
 
-This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines Express, and more.
+A small Express API for the fictional **Tidewater Tours** company, containerised with a
+multi-stage Dockerfile and shipped automatically on every merge to `main` by GitHub Actions.
 
-## Features
+Repo: <https://github.com/raheem81kg/tidewater-api>
 
-- **TypeScript** - For type safety and improved developer experience
-- **Express** - Fast, unopinionated web framework
-- **Node.js** - Runtime environment
-- **Biome** - Linting and formatting
+## What it is
 
-## Getting Started
+- `GET /health` → `{ "status": "ok" }` — used by the pipeline, the compose healthcheck, and
+  rollback verification.
+- `GET /` — banner.
+- `GET /api/tours` and `GET /api/tours/:id` — the sample resource.
 
-First, install the dependencies:
+The app is a pnpm monorepo with one package, `apps/server` (Express 5, TypeScript, tsdown build).
 
-```bash
-pnpm install
-```
-
-Then, run the development server:
+## Run it
 
 ```bash
-pnpm run dev
+pnpm install          # install deps (postinstall regenerates env types)
+pnpm test             # node:test suite — health + tours routes
+pnpm dev:server       # dev server on http://localhost:3000
 ```
 
-The API is running at [http://localhost:3000](http://localhost:3000).
+## Run it in Docker
 
-## Environment Configuration
+```bash
+docker build -f apps/server/Dockerfile -t tidewater-api .
+docker run -p 3000:3000 tidewater-api
+# or: pnpm docker:up   (docker compose, same healthcheck as production)
+```
 
-Each app owns its environment schema in `.env.schema`. Varlock generates `src/env.ts` during installation; run `pnpm run env:generate` after changing a schema. Commit schemas, and keep secrets in ignored env files or your deployment platform.
+### Why the image is built the way it is
 
-Import the generated `ENV` accessor in application code. Shared database and auth packages receive configuration or initialized clients from the application. See [Varlock's monorepo guide](https://varlock.dev/guides/monorepos/).
+`apps/server/Dockerfile` is **multi-stage**: the `builder` stage has the pnpm toolchain and
+devDependencies needed to install and compile (`tsdown → dist/index.mjs`); the `runner`
+stage (`node:24-slim` again) receives only the compiled output plus `node_modules`. The
+toolchain, test files, and source never ship — smaller image, smaller attack surface,
+and the registry pull on the VPS stays fast.
 
-Bun's automatic env loading is disabled in `bunfig.toml`; the framework integration or server bootstrap loads Varlock. Node deployments must include Varlock and its dependencies alongside the app schema.
+## The pipeline (`.github/workflows/ci.yml`)
 
-Run standalone Node/Bun tools that use Varlock from the owning app directory so they load that app's schema and env files. `env:generate` only generates TypeScript files; it does not initialize environment values in a subsequent command.
+Every push/PR runs **test**. Only on `main` (or a manual run) do the next jobs run:
 
-## Deployment
+```
+test ──► build ──► deploy
+         │          │ ssh to the Azure VM
+         │          ├─ docker login ghcr.io
+         │          ├─ docker compose pull server   (IMAGE_TAG = commit sha)
+         │          ├─ docker compose up -d
+         │          └─ curl /health until 200 (12×5s) — red if it never comes up
+         └─ docker build → ghcr.io/raheem81kg/tidewater-api:<sha> (+ :latest)
+```
 
-### Docker Compose
+- **A failing test stops everything** — `build` and `deploy` have `needs: test`.
+- **No secrets in the repo** — `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `GHCR_PAT`
+  live in Actions secrets; `apps/server/.env` is gitignored.
+- **Every merge produces an immutable, sha-tagged image** — that's what makes rollback cheap.
 
-- Target: server
-- Config: `docker-compose.yml` (app Dockerfiles live in `apps/*/Dockerfile`)
-- Build images: pnpm run docker:build
-- Start: pnpm run docker:up
-- Logs: pnpm run docker:logs
-- Stop: pnpm run docker:down
+## Deploy + rollback
 
-Environment variables are read from each app's `.env` file (baked into web builds for public variables) and overridden in `docker-compose.yml` for container networking.
+Full instructions live in [`RUNBOOK.md`](./RUNBOOK.md). Short version: the deploy target is
+an Azure Ubuntu 24.04 VM (`Standard_D2as_v4`) running Docker + compose in `~/tidewater-api`;
+rolling back is **Actions → ci → Run workflow** with a previous image tag (commit sha).
 
-For more details, see the guide on [Deploying with Docker Compose](https://www.better-t-stack.dev/docs/guides/docker).
-
-## Git Hooks and Formatting
-
-- Run checks: `pnpm run check`
-
-## Project Structure
+## Structure
 
 ```
 tidewater-api/
-├── apps/
-│   └── server/      # Backend API (Express)
-├── packages/
+├── apps/server/
+│   ├── src/app.ts        # the Express app (routes; imported by tests and index.ts)
+│   ├── src/index.ts      # entry point: app.listen(3000)
+│   ├── test/health.test.ts
+│   └── Dockerfile
+├── docker-compose.yml    # image ref + healthcheck; build section for local dev
+├── .github/workflows/ci.yml
+├── scripts/setup-vps.sh  # one-time provisioning on a fresh Ubuntu box
+└── RUNBOOK.md            # deploy / rollback / failure playbook
 ```
-
-## Available Scripts
-
-- `pnpm run dev`: Start all applications in development mode
-- `pnpm run build`: Build all applications
-- `pnpm run dev:server`: Start only the server
-- `pnpm run check-types`: Check TypeScript types across all apps
-- `pnpm run check`: Run Biome formatting and linting
-- `pnpm run docker:build`: Build the Docker Compose images
-- `pnpm run docker:up`: Build and start the Docker Compose stack
-- `pnpm run docker:logs`: Tail logs from the Docker Compose stack
-- `pnpm run docker:down`: Stop the Docker Compose stack
