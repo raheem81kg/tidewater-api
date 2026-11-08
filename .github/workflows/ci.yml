@@ -12,6 +12,7 @@ on:
         type: string
 
 permissions:
+  # Restrict GITHUB_TOKEN to only what this pipeline needs: read source and publish images.
   contents: read
   packages: write
 
@@ -21,8 +22,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        # Downloads the repository code onto this job's temporary GitHub runner.
       - uses: pnpm/action-setup@v4
+        # Installs pnpm so the runner can install dependencies and run project scripts.
       - uses: actions/setup-node@v4
+        # Sets up Node.js 24 and caches pnpm's dependency store to speed up future installs.
         with:
           node-version: 24
           cache: pnpm
@@ -37,7 +41,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        # Downloads the repository code onto this job's temporary GitHub runner.
       - uses: docker/login-action@v3
+        # Authenticates the runner to GHCR using GITHUB_TOKEN so it can push images.
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -46,6 +52,7 @@ jobs:
         id: tag
         run: echo "tag=${{ inputs.tag || github.sha }}" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
+        # Builds the Docker image and pushes it to GHCR with the resolved tag and latest.
         with:
           context: .
           file: apps/server/Dockerfile
@@ -62,6 +69,7 @@ jobs:
     steps:
       - name: Deploy and wait for /health
         uses: appleboy/ssh-action@v1
+        # Connects to the Azure VM over SSH and runs the deployment and health-check script there.
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
